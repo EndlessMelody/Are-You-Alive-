@@ -9,8 +9,10 @@
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --border-glass: rgba(255, 255, 255, 0.08);
-  --bg-glass: rgba(255, 255, 255, 0.03);
+  --bg-glass: rgba(10, 11, 16, 0.4);
   --accent-glow: rgba(59, 130, 246, 0.4);
+  --aura-color: #3b82f6;
+  --noise-opacity: 0.015;
 }
 
 * {
@@ -18,6 +20,9 @@
   padding: 0;
   box-sizing: border-box;
   -webkit-font-smoothing: antialiased;
+  cursor: default;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-glass) transparent;
 }
 
 body {
@@ -74,11 +79,56 @@ h3,
 /* Premium Glassmorphism */
 .glass {
   background: var(--bg-glass);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-glass);
   border-radius: 20px;
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: var(--noise-opacity);
+  pointer-events: none;
+}
+
+.nebula-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.nebula-shimmer::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.03) 50%,
+    transparent 80%
+  );
+  animation: shimmer 4s infinite linear;
+  pointer-events: none;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translate(-30%, -30%) rotate(0deg);
+  }
+  100% {
+    transform: translate(30%, 30%) rotate(360deg);
+  }
 }
 
 /* Typography & Spacing */

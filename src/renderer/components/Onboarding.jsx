@@ -13,6 +13,7 @@ import {
   BsShieldCheck,
 } from "react-icons/bs";
 import { FiUser, FiBell, FiServer, FiActivity } from "react-icons/fi";
+import logoImg from "../assets/logo.jpg";
 
 const TABS = [
   { id: "identity", label: "Identity", icon: FiUser },
@@ -37,7 +38,10 @@ function Onboarding({ onComplete }) {
     supabase_url: "",
     supabase_key: "",
     auto_start: true,
+    owner_birthday: "",
   });
+  const [dbHealth, setDbHealth] = useState(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
@@ -48,9 +52,20 @@ function Onboarding({ onComplete }) {
           ...existing,
           auto_start: existing.auto_start === 1,
         }));
+
+      const health = await window.electronAPI.getDbHealth();
+      setDbHealth(health);
     };
     fetch();
   }, []);
+
+  const handleRebuild = async () => {
+    setIsOptimizing(true);
+    await window.electronAPI.rebuildDb();
+    const health = await window.electronAPI.getDbHealth();
+    setDbHealth(health);
+    setIsOptimizing(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -61,13 +76,22 @@ function Onboarding({ onComplete }) {
   return (
     <div className="settings-screen">
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
         className="glass settings-container"
       >
         <div className="settings-sidebar">
           <div className="sidebar-header">
-            <img src="../../assets/icon.png" className="app-logo" />
+            <img
+              src={logoImg}
+              className="app-logo"
+              style={{
+                borderRadius: "10px",
+                border: "1px solid rgba(255,255,255,0.2)",
+              }}
+            />
             <span>Guardian v3</span>
           </div>
           <div className="sidebar-nav">
@@ -108,7 +132,10 @@ function Onboarding({ onComplete }) {
                       <BsPerson /> Personal Identity
                     </h2>
                     <div className="input-group">
-                      <label>What should we call you?</label>
+                      <label>
+                        <BsShieldLock size={12} color="#10b981" /> What should
+                        we call you?
+                      </label>
                       <input
                         type="text"
                         placeholder="Your Name"
@@ -123,7 +150,10 @@ function Onboarding({ onComplete }) {
                       />
                     </div>
                     <div className="input-group">
-                      <label>Your Contact Email</label>
+                      <label>
+                        <BsShieldLock size={12} color="#10b981" /> Your Contact
+                        Email
+                      </label>
                       <input
                         type="email"
                         placeholder="you@nebula.com"
@@ -136,12 +166,31 @@ function Onboarding({ onComplete }) {
                         }
                       />
                     </div>
+                    <div className="input-group">
+                      <label>
+                        <BsShieldLock size={12} color="#10b981" /> Your Cosmic
+                        Inception (Birthday)
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.owner_birthday}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            owner_birthday: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
 
                     <h2 style={{ marginTop: "40px" }}>
                       <BsEnvelope /> Emergency Recipient
                     </h2>
                     <div className="input-group">
-                      <label>Who receives the alert?</label>
+                      <label>
+                        <BsShieldLock size={12} color="#10b981" /> Who receives
+                        the alert?
+                      </label>
                       <input
                         type="text"
                         placeholder="Contact Name"
@@ -156,7 +205,10 @@ function Onboarding({ onComplete }) {
                       />
                     </div>
                     <div className="input-group">
-                      <label>Recipient Mailbox</label>
+                      <label>
+                        <BsShieldLock size={12} color="#10b981" /> Recipient
+                        Mailbox
+                      </label>
                       <input
                         type="email"
                         placeholder="contact@galaxy.com"
@@ -323,11 +375,44 @@ function Onboarding({ onComplete }) {
                       />
                     </div>
 
-                    <div className="about-box glass">
+                    <div className="about-box glass nebula-shimmer">
                       <h3>Guardian Intelligence</h3>
-                      <p>Version 3.0.0 (Armored Edition)</p>
-                      <p>Hardware Encryption: Active</p>
+                      <p>Version 3.1.0 (Fortress Edition)</p>
+                      <p>
+                        Hardware Encryption: <strong>Ubiquitous</strong>
+                      </p>
                       <p>Security Policy: Strict-CSP</p>
+                    </div>
+
+                    <h2 style={{ marginTop: "40px" }}>
+                      <BsServer /> Database Fortress
+                    </h2>
+                    <div className="db-health-card glass">
+                      <div className="health-stat">
+                        <span>Status</span>
+                        <span
+                          style={{
+                            color:
+                              dbHealth?.status === "healthy"
+                                ? "#10b981"
+                                : "#ef4444",
+                          }}
+                        >
+                          {dbHealth?.status || "Scanning..."}
+                        </span>
+                      </div>
+                      <div className="health-stat">
+                        <span>Storage Size</span>
+                        <span>{dbHealth?.size || "--"}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="optimize-btn"
+                        onClick={handleRebuild}
+                        disabled={isOptimizing}
+                      >
+                        {isOptimizing ? "Optimizing..." : "Optimize & Clean"}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -381,8 +466,9 @@ function Onboarding({ onComplete }) {
         .app-logo {
           width: 32px;
           height: 32px;
-          border-radius: 8px;
+          border-radius: 10px;
           object-fit: cover;
+          border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .sidebar-header span {
           font-family: "Outfit";
@@ -596,6 +682,42 @@ function Onboarding({ onComplete }) {
         }
         .ios-toggle:checked::after {
           transform: translateX(24px);
+        }
+
+        .db-health-card {
+          padding: 24px;
+          border-radius: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .health-stat {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.9rem;
+          color: var(--text-secondary);
+        }
+        .health-stat span:last-child {
+          font-weight: 600;
+          color: white;
+        }
+        .optimize-btn {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid var(--border-glass);
+          color: white;
+          padding: 10px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 0.85rem;
+          transition: all 0.3s;
+        }
+        .optimize-btn:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.1);
+          border-color: var(--accent-primary);
+        }
+        .optimize-btn:disabled {
+          opacity: 0.5;
+          cursor: wait;
         }
 
         ::-webkit-scrollbar {

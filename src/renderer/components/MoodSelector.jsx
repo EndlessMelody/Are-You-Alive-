@@ -1,4 +1,5 @@
 import React from "react";
+import { motion } from "framer-motion";
 import {
   BsEmojiSmile,
   BsEmojiNeutral,
@@ -29,15 +30,17 @@ function MoodSelector({ selectedMood, onSelect }) {
           const Icon = m.icon;
           const isActive = selectedMood === m.id;
           return (
-            <button
+            <motion.button
               key={m.id}
-              className={`mood-btn ${isActive ? "active" : ""}`}
+              whileHover={{ scale: 1.2 }}
+              whileTap={{ scale: 0.9, rotate: -5 }}
+              className={`mood-btn ${isActive ? "active nebula-shimmer" : ""}`}
               onClick={() => onSelect(m.id)}
               title={m.label}
               type="button"
             >
               <Icon size={24} color={isActive ? m.color : "#94a3b8"} />
-            </button>
+            </motion.button>
           );
         })}
       </div>

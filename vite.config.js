@@ -9,6 +9,15 @@ export default defineConfig({
   build: {
     outDir: path.join(__dirname, "dist"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "framer-motion"],
+          "vendor-icons": ["react-icons"],
+          "vendor-utils": ["sentiment"],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

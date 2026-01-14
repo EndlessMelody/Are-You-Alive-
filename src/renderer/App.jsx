@@ -1,9 +1,29 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Onboarding from "./components/Onboarding";
-import Dashboard from "./components/Dashboard";
-import HistoryView from "./components/History";
-import CosmicBackground from "./components/CosmicBackground";
+// Lazy Load Components
+const Onboarding = React.lazy(() => import("./components/Onboarding"));
+const Dashboard = React.lazy(() => import("./components/Dashboard"));
+const HistoryView = React.lazy(() => import("./components/History"));
+const CosmicBackground = React.lazy(() =>
+  import("./components/CosmicBackground")
+);
+
+// Loading Fallback
+const CosmicLoader = () => (
+  <div
+    style={{
+      width: "100vw",
+      height: "100vh",
+      background: "#050508",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      color: "#475569",
+    }}
+  >
+    Initializing Sentient Core...
+  </div>
+);
 
 function App() {
   const [profile, setProfile] = useState(null);
@@ -32,41 +52,44 @@ function App() {
 
   return (
     <div className="app-container">
-      <CosmicBackground />
+      <React.Suspense fallback={<CosmicLoader />}>
+        <CosmicBackground />
 
-      <AnimatePresence mode="wait">
-        {!profile ? (
-          <motion.div
-            key="onboarding"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.1 }}
-          >
-            <Onboarding onComplete={loadData} />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="dashboard"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <Dashboard
-              profile={profile}
-              stats={stats}
-              onCheckIn={loadData}
-              onShowHistory={() => setView("history")}
-              onShowSettings={() => setProfile(null)}
-            />
-
-            <AnimatePresence>
-              {view === "history" && (
-                <HistoryView onClose={() => setView("main")} />
-              )}
-            </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        <AnimatePresence>
+          {!profile ? (
+            <motion.div
+              key="onboarding"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+            >
+              <Onboarding onComplete={loadData} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+            >
+              <Dashboard
+                profile={profile}
+                stats={stats}
+                onCheckIn={loadData}
+                onShowHistory={() => setView("history")}
+                onShowSettings={() => setProfile(null)}
+              />
+            </motion.div>
+          )}
+          <AnimatePresence>
+            {view === "history" && (
+              <HistoryView onClose={() => setView("main")} />
+            )}
+          </AnimatePresence>
+        </AnimatePresence>
+      </React.Suspense>
 
       <style jsx>{`
         .app-container {

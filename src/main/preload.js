@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   checkIn: (data) => ipcRenderer.invoke("check-in", data),
   getStats: () => ipcRenderer.invoke("get-stats"),
   getHistory: () => ipcRenderer.invoke("get-history"),
+  getDbHealth: () => ipcRenderer.invoke("get-db-health"),
+  rebuildDb: () => ipcRenderer.invoke("rebuild-db"),
 });

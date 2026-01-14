@@ -7,6 +7,7 @@ const {
   nativeImage,
   safeStorage,
   Notification,
+  powerMonitor,
 } = require("electron");
 const path = require("path");
 const Database = require("better-sqlite3");
@@ -20,7 +21,7 @@ const AutoLaunch = require("auto-launch");
 log.transports.file.level = "info";
 log.transports.file.resolvePathFn = () =>
   path.join(app.getPath("userData"), "logs/audit.log");
-log.info("System Boot: Are You Alive? Backend v3.0 (Custom Protocol)");
+log.info("System Boot: Are You Alive? Backend v3.1 (Sentient Edition)");
 
 const dbPath = path.join(app.getPath("userData"), "database.sqlite");
 const db = new Database(dbPath);
@@ -31,6 +32,7 @@ let supabase = null;
 let tray = null;
 let mainWindow = null;
 let isQuitting = false;
+let softPulseExtension = 0; // Extension in hours from activity
 
 // Initialize AutoLaunch
 const appLauncher = new AutoLaunch({
@@ -94,17 +96,34 @@ function initializeInfrastructure() {
   `);
 
   const addColumn = (table, column, type) => {
-    const info = db.prepare(`PRAGMA table_info(${table})`).all();
-    if (!info.some((col) => col.name === column)) {
-      db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`).run();
-      log.info(`Migration: Added ${column} to ${table}`);
+    try {
+      const info = db.prepare(`PRAGMA table_info(${table})`).all();
+      if (!info.some((col) => col.name === column)) {
+        db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`).run();
+        log.info(`Migration: Added ${column} to ${table}`);
+      }
+    } catch (err) {
+      log.error(`Migration Failed for ${table}.${column}:`, err);
     }
   };
 
+  addColumn("profile", "danger_threshold", "INTEGER DEFAULT 2");
+  addColumn("profile", "last_alert_sent", "TIMESTAMP");
   addColumn("profile", "smtp_host", "TEXT");
   addColumn("profile", "smtp_port", "INTEGER");
   addColumn("profile", "smtp_user", "TEXT");
   addColumn("profile", "smtp_pass", "BLOB");
+  addColumn("profile", "supabase_url", "TEXT");
+  addColumn("profile", "supabase_key", "BLOB");
+  addColumn("profile", "auto_start", "INTEGER DEFAULT 0");
+  addColumn("profile", "owner_birthday", "TEXT");
+  addColumn("profile", "last_bday_noti", "TEXT");
+
+  addColumn("check_ins", "timestamp", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+  addColumn("check_ins", "thought", "TEXT");
+  addColumn("check_ins", "mood", "TEXT");
+  addColumn("check_ins", "sentiment_score", "INTEGER");
+  addColumn("check_ins", "sync_status", "TEXT DEFAULT 'pending'");
 }
 
 initializeInfrastructure();
@@ -141,7 +160,7 @@ function initSupabase(profile) {
  * UI & App Logic
  */
 function createTray() {
-  const iconPath = path.join(__dirname, "../../assets/icon.png");
+  const iconPath = path.join(__dirname, "../../public/logo.jpg");
   let icon;
   try {
     icon = nativeImage.createFromPath(iconPath);
@@ -149,6 +168,7 @@ function createTray() {
     icon = nativeImage.createEmpty();
   }
   tray = new Tray(icon);
+  tray.setToolTip("RUA Checkin");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -176,6 +196,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 850,
+    icon: path.join(__dirname, "../../public/logo.jpg"),
     titleBarStyle: "hidden",
     titleBarOverlay: {
       color: "#050508",
@@ -208,6 +229,13 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+
+  // Activity Monitor (Soft Pulse)
+  powerMonitor.on("unlock-screen", () => {
+    softPulseExtension = 6; // Extend alert by 6 hours if user is active
+    log.info("Soft Pulse Detected: Screen Unlocked");
+  });
+
   const profile = db.prepare("SELECT * FROM profile WHERE id = 1").get();
   if (profile) {
     initSMTP(profile);
@@ -224,6 +252,12 @@ ipcMain.handle("get-profile", () => {
   if (!p) return null;
   return {
     ...p,
+    user_name: decrypt(p.user_name) || p.user_name,
+    user_email: decrypt(p.user_email) || p.user_email,
+    contact_name: decrypt(p.contact_name) || p.contact_name,
+    contact_email: decrypt(p.contact_email) || p.contact_email,
+    contact_phone: decrypt(p.contact_phone) || p.contact_phone,
+    owner_birthday: decrypt(p.owner_birthday) || p.owner_birthday,
     hasSmtp: !!p.smtp_pass,
     hasSupabase: !!p.supabase_key,
   };
@@ -231,19 +265,25 @@ ipcMain.handle("get-profile", () => {
 
 ipcMain.handle("save-profile", (event, data) => {
   const existing = db.prepare("SELECT id FROM profile WHERE id = 1").get();
+  const encUser = encrypt(data.user_name);
+  const encMail = encrypt(data.user_email);
+  const encCName = encrypt(data.contact_name);
+  const encCMail = encrypt(data.contact_email);
+  const encCPhone = encrypt(data.contact_phone);
+  const encBday = encrypt(data.owner_birthday);
   const encryptedSmtp = data.smtp_pass ? encrypt(data.smtp_pass) : null;
   const encryptedSupa = data.supabase_key ? encrypt(data.supabase_key) : null;
 
   const sql = existing
-    ? `UPDATE profile SET user_name=?, user_email=?, contact_name=?, contact_email=?, contact_phone=?, danger_threshold=?, smtp_host=?, smtp_port=?, smtp_user=?, smtp_pass=COALESCE(?, smtp_pass), supabase_url=?, supabase_key=COALESCE(?, supabase_key), auto_start=? WHERE id=1`
-    : `INSERT INTO profile (id, user_name, user_email, contact_name, contact_email, contact_phone, danger_threshold, smtp_host, smtp_port, smtp_user, smtp_pass, supabase_url, supabase_key, auto_start) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    ? `UPDATE profile SET user_name=?, user_email=?, contact_name=?, contact_email=?, contact_phone=?, danger_threshold=?, smtp_host=?, smtp_port=?, smtp_user=?, smtp_pass=COALESCE(?, smtp_pass), supabase_url=?, supabase_key=COALESCE(?, supabase_key), auto_start=?, owner_birthday=? WHERE id=1`
+    : `INSERT INTO profile (id, user_name, user_email, contact_name, contact_email, contact_phone, danger_threshold, smtp_host, smtp_port, smtp_user, smtp_pass, supabase_url, supabase_key, auto_start, owner_birthday) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
   const params = [
-    data.user_name,
-    data.user_email,
-    data.contact_name,
-    data.contact_email,
-    data.contact_phone,
+    encUser,
+    encMail,
+    encCName,
+    encCMail,
+    encCPhone,
     data.danger_threshold,
     data.smtp_host,
     data.smtp_port,
@@ -252,10 +292,11 @@ ipcMain.handle("save-profile", (event, data) => {
     data.supabase_url,
     encryptedSupa,
     data.auto_start ? 1 : 0,
+    encBday,
   ];
 
   db.prepare(sql).run(...params);
-  log.info(`Profile Updated: ${data.user_name}`);
+  log.info(`Profile Securely Updated: ${data.user_name}`);
 
   const fresh = db.prepare("SELECT * FROM profile WHERE id = 1").get();
   initSMTP(fresh);
@@ -269,18 +310,24 @@ ipcMain.handle("check-in", async (event, data) => {
   const { thought, mood } = data || {};
   const analysis = sentiment.analyze(thought || "");
   const now = new Date().toISOString();
+  const encryptedThought = encrypt(thought || "");
 
   const result = db
     .prepare(
       "INSERT INTO check_ins (timestamp, thought, mood, sentiment_score) VALUES (?, ?, ?, ?)"
     )
-    .run(now, thought || "", mood || "", analysis.score);
+    .run(now, encryptedThought, mood || "", analysis.score);
 
   if (supabase) {
     supabase
       .from("check_ins")
       .insert([
-        { timestamp: now, thought, mood, sentiment_score: analysis.score },
+        {
+          timestamp: now,
+          thought: encryptedThought ? encryptedThought.toString("base64") : "",
+          mood,
+          sentiment_score: analysis.score,
+        },
       ])
       .then((res) => {
         if (!res.error)
@@ -303,46 +350,117 @@ ipcMain.handle("check-in", async (event, data) => {
       "UPDATE streak SET current_count=?, last_checkin_date=? WHERE id=1"
     ).run(newCount, today);
   }
+  softPulseExtension = 0; // Reset soft pulse on hard check-in
   return { success: true, count: newCount };
 });
 
 ipcMain.handle("get-stats", () => {
-  const streak = db
-    .prepare("SELECT current_count FROM streak WHERE id = 1")
-    .get();
-  const lastCheckin = db
-    .prepare("SELECT timestamp FROM check_ins ORDER BY timestamp DESC LIMIT 1")
-    .get();
-  const profile = db
-    .prepare("SELECT danger_threshold FROM profile WHERE id = 1")
-    .get();
-  let warningActive = false,
-    timeRemaining = null;
-  if (lastCheckin && profile) {
-    const lastDate = new Date(lastCheckin.timestamp),
-      now = new Date();
-    const diffHours = (now - lastDate) / (1000 * 60 * 60),
-      thresholdHours = profile.danger_threshold * 24;
-    if (diffHours >= thresholdHours) {
-      warningActive = true;
-      timeRemaining = Math.max(
-        0,
-        new Date(lastDate.getTime() + (thresholdHours + 12) * 60 * 60 * 1000) -
-          now
-      );
+  try {
+    const streak = db
+      .prepare("SELECT current_count FROM streak WHERE id = 1")
+      .get();
+    const lastCheckin = db
+      .prepare(
+        "SELECT timestamp FROM check_ins ORDER BY timestamp DESC LIMIT 1"
+      )
+      .get();
+    const profile = db
+      .prepare(
+        "SELECT danger_threshold, owner_birthday FROM profile WHERE id = 1"
+      )
+      .get();
+
+    let warningActive = false,
+      timeRemaining = null,
+      lifeStreak = 0;
+
+    if (profile && profile.owner_birthday) {
+      const bdayStr = decrypt(profile.owner_birthday);
+      if (bdayStr) {
+        const bday = new Date(bdayStr);
+        lifeStreak = Math.floor((new Date() - bday) / (1000 * 60 * 60 * 24));
+      }
     }
+
+    const recent = db
+      .prepare(
+        "SELECT sentiment_score FROM check_ins ORDER BY timestamp DESC LIMIT 7"
+      )
+      .all();
+    const avgSentiment =
+      recent.length > 0
+        ? recent.reduce((a, b) => a + (b.sentiment_score || 0), 0) /
+          recent.length
+        : 0;
+
+    if (lastCheckin && profile) {
+      const lastDate = new Date(lastCheckin.timestamp),
+        now = new Date();
+      const diffHours = (now - lastDate) / (1000 * 60 * 60);
+
+      // Adaptive Threshold Logic
+      let thresholdHours = profile.danger_threshold * 24;
+      if (avgSentiment < -1) thresholdHours *= 0.5; // Tighten threshold if user is down
+
+      if (diffHours >= thresholdHours) {
+        warningActive = true;
+        timeRemaining = Math.max(
+          0,
+          new Date(
+            lastDate.getTime() +
+              (thresholdHours + 12 + softPulseExtension) * 60 * 60 * 1000
+          ) - now
+        );
+      }
+    }
+
+    return {
+      streak: streak ? streak.current_count : 0,
+      lifeStreak,
+      avgSentiment,
+      recentCheckins: recent.length,
+      lastCheckin: lastCheckin ? lastCheckin.timestamp : null,
+      warningActive,
+      timeRemaining,
+    };
+  } catch (err) {
+    log.error("get-stats failed:", err);
+    throw err;
   }
-  return {
-    streak: streak ? streak.current_count : 0,
-    lastCheckin: lastCheckin ? lastCheckin.timestamp : null,
-    warningActive,
-    timeRemaining,
-  };
 });
 
-ipcMain.handle("get-history", () =>
-  db.prepare("SELECT * FROM check_ins ORDER BY timestamp DESC LIMIT 100").all()
-);
+ipcMain.handle("get-history", () => {
+  const rows = db
+    .prepare("SELECT * FROM check_ins ORDER BY timestamp DESC LIMIT 100")
+    .all();
+  return rows.map((r) => ({
+    ...r,
+    thought: decrypt(r.thought) || r.thought,
+  }));
+});
+
+ipcMain.handle("get-db-health", () => {
+  try {
+    const integrity = db.prepare("PRAGMA integrity_check").get();
+    const stats = require("fs").statSync(dbPath);
+    return {
+      status: integrity.integrity_check === "ok" ? "healthy" : "corrupted",
+      size: (stats.size / 1024 / 1024).toFixed(2) + " MB",
+      path: dbPath,
+    };
+  } catch (err) {
+    return { status: "error", message: err.message };
+  }
+});
+
+ipcMain.handle("rebuild-db", () => {
+  try {
+    db.prepare("VACUUM").run();
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+});
 
 /**
  * Custom Alert Engine
@@ -358,11 +476,50 @@ async function guardianLoop() {
 
   const lastDate = new Date(lastCheckin.timestamp),
     now = new Date();
-  const diffHours = (now - lastDate) / (1000 * 60 * 60);
-  const threshold = profile.danger_threshold * 24;
 
-  if (diffHours >= threshold) {
-    const elapsedSinceDanger = diffHours - threshold;
+  // Birthday Alert
+  if (profile.owner_birthday) {
+    const bdayStr = decrypt(profile.owner_birthday);
+    if (bdayStr) {
+      const bday = new Date(bdayStr);
+      if (
+        bday.getMonth() === now.getMonth() &&
+        bday.getDate() === now.getDate()
+      ) {
+        const lastBdayNoti = profile.last_bday_noti
+          ? new Date(profile.last_bday_noti)
+          : null;
+        if (!lastBdayNoti || lastBdayNoti.getFullYear() < now.getFullYear()) {
+          new Notification({
+            title: "Happy Birthday!",
+            body: "Wishing you a bright year in the cosmos. Stay alive, stay curious.",
+          }).show();
+          db.prepare("UPDATE profile SET last_bday_noti=? WHERE id=1").run(
+            now.toISOString()
+          );
+        }
+      }
+    }
+  }
+
+  const diffHours = (now - lastDate) / (1000 * 60 * 60);
+
+  // Sentiment Trend for Guardian
+  const recent = db
+    .prepare(
+      "SELECT sentiment_score FROM check_ins ORDER BY timestamp DESC LIMIT 5"
+    )
+    .all();
+  const avgSentiment =
+    recent.length > 0
+      ? recent.reduce((a, b) => a + (b.sentiment_score || 0), 0) / recent.length
+      : 0;
+
+  let threshold = profile.danger_threshold * 24;
+  if (avgSentiment < -1) threshold *= 0.5; // Tighter safety window if user is in a low period
+
+  if (diffHours >= threshold + softPulseExtension) {
+    const elapsedSinceDanger = diffHours - (threshold + softPulseExtension);
     if (elapsedSinceDanger < 1) {
       new Notification({
         title: "Are You Alive?",
@@ -390,6 +547,9 @@ async function sendEmergencyAlert(profile) {
     return;
   }
 
+  const userName = decrypt(profile.user_name) || profile.user_name;
+  const contactEmail = decrypt(profile.contact_email) || profile.contact_email;
+
   const htmlTemplate = `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0c0d10; color: #ffffff; padding: 40px; border-radius: 20px; border: 1px solid #1f2128;">
       <div style="text-align: center; margin-bottom: 30px;">
@@ -398,14 +558,14 @@ async function sendEmergencyAlert(profile) {
       </div>
       <div style="background-color: #16181d; padding: 30px; border-radius: 16px; margin-bottom: 30px;">
         <p style="font-size: 16px; line-height: 1.6; margin: 0;">
-          This is an automated alert regarding <strong>${profile.user_name}</strong>. 
+          This is an automated alert regarding <strong>${userName}</strong>. 
           The "Are You Alive?" system has detected silence for over <strong>${profile.danger_threshold} days</strong>.
         </p>
       </div>
       <div style="border-top: 1px solid #1f2128; padding-top: 20px; text-align: center;">
         <p style="color: #94a3b8; font-size: 14px;">Please attempt to contact them directly.</p>
         <div style="margin-top: 20px; font-size: 12px; color: #475569;">
-          Secure Protocol v3.0 | Local Pulse Monitor
+          Secure Protocol v3.1 | Local Pulse Monitor
         </div>
       </div>
     </div>
@@ -414,8 +574,8 @@ async function sendEmergencyAlert(profile) {
   try {
     await transporter.sendMail({
       from: `"Are You Alive Guardian" <${profile.smtp_user}>`,
-      to: profile.contact_email,
-      subject: `CRITICAL ALERT: ${profile.user_name} Initializing Emergency Protocol`,
+      to: contactEmail,
+      subject: `CRITICAL ALERT: ${userName} Initializing Emergency Protocol`,
       html: htmlTemplate,
     });
     log.info("Alert Sent Successfully via Custom SMTP");

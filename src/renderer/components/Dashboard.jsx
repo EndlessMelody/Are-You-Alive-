@@ -7,10 +7,15 @@ import {
   BsGear,
   BsClock,
   BsFeather,
+  BsSend,
 } from "react-icons/bs";
+import { GiAtomicSlashes } from "react-icons/gi";
 import { FiHeart } from "react-icons/fi";
+import { BsCalendar4Week } from "react-icons/bs";
 import MoodSelector from "./MoodSelector";
 import Lifeline from "./Lifeline";
+import CosmicCalendar from "./CosmicCalendar";
+import logoImg from "../assets/logo.jpg";
 
 function Dashboard({
   profile,
@@ -23,6 +28,8 @@ function Dashboard({
   const [thought, setThought] = useState("");
   const [mood, setMood] = useState("neutral");
   const [history, setHistory] = useState([]);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
   useEffect(() => {
     setTimeLeft(stats.timeRemaining);
@@ -64,17 +71,38 @@ function Dashboard({
     ? timeLeft < 4 * 60 * 60 * 1000
       ? "#ef4444"
       : "#f59e0b"
-    : "#3b82f6";
+    : stats.avgSentiment < -1
+    ? "#6366f1" // Blue/Indigo for low sentiment
+    : stats.avgSentiment > 1
+    ? "#10b981" // Green/Emerald for high sentiment
+    : "#3b82f6"; // Classic blue for neutral
+
+  const getDynamicPrompt = () => {
+    if (stats.avgSentiment < -1) return "Reflecting on the blue days...";
+    if (stats.avgSentiment > 1) return "Channeling the solar energy...";
+    if (stats.recentCheckins === 0) return "Begin the cosmic dialogue...";
+    return "A thought for the cosmic void...";
+  };
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
       className="dashboard-v4"
+      style={{ "--aura-color": statusColor }}
     >
       <div className="custom-title-bar">
         <div className="title-left">
-          <img src="../../assets/icon.png" className="mini-logo" />
+          <img
+            src={logoImg}
+            className="mini-logo"
+            style={{
+              borderRadius: "6px",
+              border: "1px solid rgba(255,255,255,0.2)",
+            }}
+          />
           <span className="window-title">Are You Alive?</span>
         </div>
       </div>
@@ -83,12 +111,23 @@ function Dashboard({
 
       <div className="top-pills">
         <div className="pill glass">
-          <BsLightningChargeFill color="#f59e0b" />
+          <GiAtomicSlashes color="#f59e0b" className="react-spin" size={20} />
           <span>{stats.streak} day streak</span>
         </div>
-        <div className="pill glass">
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          className="pill glass nebula-shimmer"
+        >
           <BsShieldCheck color="#10b981" />
           <span>Active</span>
+        </motion.div>
+        <div className="pill glass">
+          <span
+            style={{ opacity: 0.6, fontSize: "0.7rem", marginRight: "4px" }}
+          >
+            LIFE
+          </span>
+          <span>{stats.lifeStreak} days</span>
         </div>
         <div className="pill-actions">
           <button
@@ -97,6 +136,13 @@ function Dashboard({
             title="History"
           >
             <BsClockHistory />
+          </button>
+          <button
+            className="pill-btn glass"
+            onClick={() => setShowCalendar(true)}
+            title="Cosmic Calendar"
+          >
+            <BsCalendar4Week />
           </button>
           <button
             className="pill-btn glass"
@@ -110,26 +156,47 @@ function Dashboard({
 
       <div className="central-area">
         <div className="heartbeat-container">
-          <div className="pulse-circle" style={{ borderColor: statusColor }} />
+          <div
+            className="pulse-circle"
+            style={{ borderColor: "var(--aura-color)" }}
+          />
           <div
             className="pulse-circle delay-1"
-            style={{ borderColor: statusColor }}
+            style={{ borderColor: "var(--aura-color)" }}
           />
           <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98, filter: "brightness(0.9)" }}
             className="heartbeat-btn"
             style={{
-              boxShadow: `0 0 50px ${statusColor}33`,
-              borderColor: statusColor,
+              boxShadow: `0 0 50px var(--aura-color)33`,
+              borderColor: "var(--aura-color)",
+              transition: "border-color 0.8s ease, box-shadow 0.8s ease",
             }}
             onClick={handleCheckIn}
           >
             <FiHeart size={40} className="heart-icon" />
             <span className="btn-main">I'm Alive</span>
-            <span className="btn-sub">Confirm Pulse</span>
+            <span className="btn-sub">
+              {stats.avgSentiment < -1 ? "Holding On" : "Confirm Pulse"}
+            </span>
           </motion.button>
         </div>
+
+        <AnimatePresence>
+          {showCalendar && (
+            <div className="calendar-modal">
+              <div
+                className="modal-backdrop"
+                onClick={() => setShowCalendar(false)}
+              />
+              <CosmicCalendar
+                history={history}
+                onClose={() => setShowCalendar(false)}
+              />
+            </div>
+          )}
+        </AnimatePresence>
 
         {stats.warningActive && (
           <div className="countdown-container">
@@ -151,16 +218,52 @@ function Dashboard({
 
         <div className="interaction-grid">
           <MoodSelector selectedMood={mood} onSelect={setMood} />
-          <div className="thought-journal glass">
+
+          <AnimatePresence>
+            {isFocused && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="zen-backdrop"
+                onClick={() => setIsFocused(false)}
+              />
+            )}
+          </AnimatePresence>
+
+          <motion.div
+            className={`thought-journal glass nebula-shimmer ${
+              isFocused ? "focused" : ""
+            }`}
+            layout
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          >
             <BsFeather className="journal-icon" />
-            <input
-              type="text"
-              placeholder="A thought for the cosmic void..."
+            <textarea
+              placeholder={getDynamicPrompt()}
               className="journal-input"
               value={thought}
               onChange={(e) => setThought(e.target.value)}
+              onFocus={() => setIsFocused(true)}
+              rows={isFocused ? 5 : 1}
             />
-          </div>
+            <AnimatePresence>
+              {(isFocused || thought.length > 0) && (
+                <motion.button
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  whileHover={{ scale: 1.1, color: "#10b981" }}
+                  whileTap={{ scale: 0.9 }}
+                  className="journal-send-btn"
+                  onClick={handleCheckIn}
+                  title="Send to Cosmos"
+                >
+                  <BsSend size={18} />
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </motion.div>
         </div>
       </div>
 
@@ -197,7 +300,8 @@ function Dashboard({
         .mini-logo {
           width: 18px;
           height: 18px;
-          border-radius: 4px;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .window-title {
           font-family: "Outfit";
@@ -339,16 +443,33 @@ function Dashboard({
           gap: 24px;
         }
         .thought-journal {
-          width: 450px;
-          padding: 12px 24px;
-          border-radius: 50px;
+          width: 320px;
+          padding: 10px 20px;
+          border-radius: 20px;
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           gap: 12px;
+          transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          z-index: 10;
+          position: relative;
+        }
+        .thought-journal.focused {
+          width: 600px;
+          background: rgba(20, 20, 30, 0.8);
+          border-color: var(--accent-primary);
+          box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
+          transform: translateY(-20px);
+          z-index: 1002;
         }
         .journal-icon {
           color: var(--text-secondary);
           opacity: 0.6;
+          margin-top: 4px;
+          transition: color 0.3s;
+        }
+        .thought-journal.focused .journal-icon {
+          color: var(--accent-primary);
+          opacity: 1;
         }
         .journal-input {
           background: transparent;
@@ -356,9 +477,76 @@ function Dashboard({
           color: white;
           flex: 1;
           outline: none;
+          font-family: "Outfit", sans-serif;
+          font-size: 1.1rem;
+          line-height: 1.6;
+          resize: none;
+          text-align: left;
+          min-height: 24px;
+        }
+        .journal-input::placeholder {
           font-family: "Inter", sans-serif;
-          font-size: 0.95rem;
+          font-style: italic;
+          opacity: 0.5;
           text-align: center;
+        }
+        .thought-journal.focused .journal-input::placeholder {
+          text-align: left;
+        }
+        .journal-send-btn {
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          color: white;
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          margin-top: 2px;
+        }
+        .react-spin {
+          animation: spin-slow 10s linear infinite;
+        }
+        @keyframes spin-slow {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+        .zen-backdrop {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          z-index: 1001;
+        }
+
+        .calendar-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2000;
+        }
+        .modal-backdrop {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(8px);
         }
       `}</style>
     </motion.div>
