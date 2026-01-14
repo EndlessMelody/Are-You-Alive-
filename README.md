@@ -33,12 +33,12 @@ In a world of constant noise, we often forget to check in with ourselves.
 
 ## Key Features
 
-- **⚛️ Atomic Streak**: Quantum-inspired life tracking powered by a perpetual motion engine.
-- **📓 Sentient Journal**: Immersive "Zen Mode" writing experience with auto-expanding glassmorphic UI.
-- **🛡️ Silent Guardian**: System tray integration that monitors activity without intrusion.
-- **🌌 Cosmic Aesthetic**: High-fidelity glassmorphism with nebula shimmers and particle effects.
-- **🔒 Fortress Security**: Hardware-backed encryption (`electron.safeStorage`) for all personal data.
-- **📊 Vitality Analytics**: Visual history of your moods, check-ins, and survival stats.
+- **Atomic Streak**: Quantum-inspired life tracking powered by a perpetual motion engine.
+- **Sentient Journal**: Immersive "Zen Mode" writing experience with auto-expanding glassmorphic UI.
+- **Silent Guardian**: System tray integration that monitors activity without intrusion.
+- **Cosmic Aesthetic**: High-fidelity glassmorphism with nebula shimmers and particle effects.
+- **Fortress Security**: Hardware-backed encryption (`electron.safeStorage`) for all personal data.
+- **Vitality Analytics**: Visual history of your moods, check-ins, and survival stats.
 
 ---
 
